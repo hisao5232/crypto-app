@@ -17,3 +17,24 @@ crypto_postgres_data/
 .DS_Store
 .vscode/
 .idea/
+
+# Next.js 関連
+frontend-next/.next/
+frontend-next/node_modules/
+frontend-next/out/
+frontend-next/.env*.local
+
+# Python / Backend
+backend/__pycache__/
+backend/.venv/
+backend/*.py[cod]
+
+# Docker & DB
+postgres_data/
+crypto_postgres_data/
+
+# 共通の秘密情報
+.env
+
+# OS
+.DS_Store
