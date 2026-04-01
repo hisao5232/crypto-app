@@ -31,10 +31,10 @@ docker compose up -d --build
 ```
 
 ## 📅 今後の拡張予定 (Roadmap)
-​[ ] 時系列データの蓄積: PostgreSQL (TimescaleDB) を活用した過去価格の保存。
-​[ ] 高度なチャート実装: Lightweight Charts (TradingView) によるローソク足表示。
-​[ ] マルチ通貨対応: BTC以外の主要アルトコインの同時監視。
-​[ ] ユーザー管理機能: NISA/iDeCo等の個人資産管理と連携したポートフォリオ表示。
+- [ ] 時系列データの蓄積: PostgreSQL (TimescaleDB) を活用した過去価格の保存。
+- [ ] 高度なチャート実装: Lightweight Charts (TradingView) によるローソク足表示。
+- [ ] マルチ通貨対応: BTC以外の主要アルトコインの同時監視。
+- [ ] ユーザー管理機能: NISA/iDeCo等の個人資産管理と連携したポートフォリオ表示。
 ​
 ## 👤 作者
 ​GitHub: hisao5232
