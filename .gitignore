@@ -1,0 +1,19 @@
+# 環境変数・秘密情報
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Docker
+postgres_data/
+crypto_postgres_data/
+
+# OS / エディタ
+.DS_Store
+.vscode/
+.idea/

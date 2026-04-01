@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: crypto-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - crypto_postgres_data:/var/lib/postgresql/data
+    networks:
+      - crypto_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    container_name: crypto-backend
+    build: ./backend
+    restart: always
+    env_file: .env
+    # WebSocketを扱うため、Uvicornのワーカー設定などは標準的なものを採用
+    command: uvicorn main:app --host 0.0.0.0 --port 8040
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - crypto_net
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      # 指定のサブドメインで受け付け
+      - "traefik.http.routers.crypto-api.rule=Host(`${DOMAIN_CRYPTO_API}`)"
+      - "traefik.http.routers.crypto-api.entrypoints=websecure"
+      - "traefik.http.routers.crypto-api.tls=true"
+      - "traefik.http.routers.crypto-api.tls.certresolver=${CERT_RESOLVER}"
+      - "traefik.http.services.crypto-api.loadbalancer.server.port=8040"
+      - "traefik.docker.network=traefik-public"
+
+networks:
+  crypto_net:
+  traefik-public:
+    external: true
+
+volumes:
+  crypto_postgres_data:

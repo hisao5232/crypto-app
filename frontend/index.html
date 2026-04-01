@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Realtime Price</title>
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>
+        /* 必要最小限のスタイル */
+        body { background: #1a1a1a; color: white; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .card { background: #2a2a2a; border: 1px solid #444; padding: 2.5rem; border-radius: 1rem; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        #price { font-size: 3.5rem; font-weight: 800; color: #00ff88; margin: 1rem 0; font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 id="symbol" class="text-xl text-gray-400">Connecting...</h2>
+        <div id="price">---</div>
+        <p class="text-sm text-gray-500">Live via VPS (FastAPI + Traefik)</p>
+    </div>
+
+    <script>
+        // 【重要】接続先をご自身のドメインに変更
+        // ローカル開発時と本番時で自動で切り替わるように設定
+        const API_DOMAIN = "crypto-api.go-pro-world.net";
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const wsUrl = `${wsProtocol}${API_DOMAIN}/ws/crypto`;
+
+        function connect() {
+            const ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                // バックエンドのmain.pyのキー名に合わせて修正（s: symbol, p: price）
+                document.getElementById("symbol").innerText = data.s || "BTCUSDT";
+                document.getElementById("price").innerText = 
+                    parseFloat(data.p).toLocaleString(undefined, { minimumFractionDigits: 2 }) + " USDT";
+            };
+
+            ws.onclose = () => {
+                console.log("Disconnected. Retrying in 3s...");
+                setTimeout(connect, 3000); // 接続が切れたら3秒後に再接続
+            };
+
+            ws.onerror = (err) => console.error("WebSocket Error:", err);
+        }
+
+        connect();
+    </script>
+</body>
+</html>
