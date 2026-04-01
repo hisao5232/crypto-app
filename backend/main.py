@@ -1,41 +1,51 @@
 import asyncio
 import json
 import websockets
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    # Cloudflare PagesのURL（または "*"）を指定
-    allow_origins=["https://crypto-app.pages.dev", "https://crypto-app.go-pro-world.net"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ストリームのURLを確認（ここが原因の可能性もあります）
 BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@ticker"
 
 @app.websocket("/ws/crypto")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    print("DEBUG: ブラウザからのWebSocket接続を承諾しました")
     
-    # BinanceのWebSocketに接続
-    async with websockets.connect(BINANCE_WS_URL) as binance_ws:
-        try:
+    try:
+        # BinanceのWebSocketに接続
+        async with websockets.connect(BINANCE_WS_URL) as binance_ws:
+            print(f"DEBUG: Binanceに接続しました: {BINANCE_WS_URL}")
+            
             while True:
-                # Binanceからデータを受信
-                data = await binance_ws.recv()
-                msg = json.loads(data)
+                # Binanceから受信
+                binance_data = await binance_ws.recv()
+                msg = json.loads(binance_data)
                 
-                # 必要なデータ（現在の価格）だけを抽出してフロントへ送信
-                price_data = {
-                    "symbol": msg['s'],
-                    "price": msg['c']  # 'c' は Last Price
+                # ログに生データを出す（確認できたら後で消す）
+                # print(f"DEBUG: 受信データ: {msg}") 
+                
+                # フロントエンドに送るデータを整形
+                payload = {
+                    "s": msg.get('s', 'BTCUSDT'),
+                    "p": msg.get('c', '0') # 'c' は最新価格
                 }
-                await websocket.send_json(price_data)
-        except Exception as e:
-            print(f"Error: {e}")
-        finally:
-            await websocket.close()
+                
+                # ブラウザへ送信
+                await websocket.send_json(payload)
+                
+    except WebSocketDisconnect:
+        print("INFO: ブラウザ側から切断されました")
+    except Exception as e:
+        print(f"ERROR: 予期せぬエラーが発生しました: {e}")
+    # ★ ここが修正ポイント：finallyで無理にclose()を呼ばない
