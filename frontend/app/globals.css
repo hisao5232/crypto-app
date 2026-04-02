@@ -1,35 +1,16 @@
 @import "tailwindcss";
 
-@layer theme {
-  :root {
-    --background: #121212; /* より深い黒 */
-    --foreground: #e0e0e0;
-    --card: #1e1e1e;
-    --border: #333333;
-    --primary: #3b82f6; /* Blue */
-    --success: #10b981; /* Green */
-    --warning: #ef4444; /* Red */
-  }
-}
+/* v4 の変数定義（これで bg-background などが自動生成されます） */
+@theme {
+  --color-background: #121212;
+  --color-foreground: #e0e0e0;
+  --color-card: #1e1e1e;
+  --color-border: #333333;
+  --color-primary: #3b82f6;
+  --color-success: #10b981;
+  --color-warning: #ef4444;
 
-@layer base {
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
-  }
-  
-  /* スクロールバーのカスタイマイズ */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-background;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full hover:bg-neutral-600;
-  }
-
-  /* アニメーション定義 */
+  /* アニメーションもここに追加 */
   @keyframes flash-green {
     0% { color: #10b981; }
     50% { color: #fff; }
@@ -40,6 +21,33 @@
     50% { color: #fff; }
     100% { color: #ef4444; }
   }
-  .animate-flash-green { animation: flash-green 1s ease-out; }
-  .animate-flash-red { animation: flash-red 1s ease-out; }
 }
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    /* もし @apply を使いたい場合は bg-[var(--color-background)] と書くか、
+       上記 @theme 内で定義した名前を使います */
+    @apply font-sans antialiased;
+  }
+  
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background-color: var(--color-background);
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #525252;
+  }
+}
+
+/* アニメーション用クラス */
+.animate-flash-green { animation: flash-green 1s ease-out; }
+.animate-flash-red { animation: flash-red 1s ease-out; }
