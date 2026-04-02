@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* ソースディレクトリを明示的に指定（ディレクトリ名変更に対応） */
+@source "../app/**/*.{js,ts,jsx,tsx,mdx}";
+@source "../components/**/*.{js,ts,jsx,tsx,mdx}";
+
 /* v4 の変数定義（これで bg-background などが自動生成されます） */
 @theme {
   --color-background: #121212;
