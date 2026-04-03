@@ -6,8 +6,6 @@ import {
   ColorType, 
   CandlestickData, 
   Time,
-  SeriesMarker,
-  // v4/v5系では CandlestickSeries を使って型指定します
   CandlestickSeries
 } from 'lightweight-charts';
 
@@ -17,7 +15,6 @@ export default function PriceChart() {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // 1. チャートの初期化
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
@@ -29,11 +26,11 @@ export default function PriceChart() {
       },
       width: chartContainerRef.current.clientWidth,
       height: 384,
+      timeScale: {
+        borderColor: '#333',
+      },
     });
 
-    // 2. ローソク足シリーズの追加 (最新の推奨される書き方)
-    // エラーが出る場合は 'as any' を一時的に使って回避することも可能ですが、
-    // 基本的に以下のメソッドで CandlestickSeries 型として取得できます。
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
@@ -42,17 +39,43 @@ export default function PriceChart() {
       wickDownColor: '#ef4444',
     });
 
-    // 3. サンプルデータ
-    const data: CandlestickData<Time>[] = [
-      { time: '2026-04-01' as Time, open: 66000, high: 67500, low: 65800, close: 67200 },
-      { time: '2026-04-02' as Time, open: 67200, high: 68000, low: 66900, close: 66900 },
-      { time: '2026-04-03' as Time, open: 66900, high: 68500, low: 66500, close: 68200 },
-    ];
+    // --- 過去30日分のダミーデータを生成 ---
+    const generateItems = () => {
+      const items: CandlestickData<Time>[] = [];
+      let currentPrice = 65000;
+      const now = new Date();
+      
+      for (let i = 30; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        
+        // yyyy-mm-dd 形式の文字列を作成
+        const timeStr = date.toISOString().split('T')[0] as Time;
+        
+        const open = currentPrice;
+        const high = open + Math.random() * 1000;
+        const low = open - Math.random() * 1000;
+        const close = low + Math.random() * (high - low);
+        
+        items.push({
+          time: timeStr,
+          open,
+          high,
+          low,
+          close,
+        });
+        
+        currentPrice = close; // 次の日の始値を前の日の終値にする
+      }
+      return items;
+    };
 
+    const data = generateItems();
     candlestickSeries.setData(data);
+    
+    // 全データが収まるように表示を調整
     chart.timeScale().fitContent();
 
-    // 4. リサイズ処理
     const handleResize = () => {
       if (chartContainerRef.current) {
         chart.applyOptions({ width: chartContainerRef.current.clientWidth });
