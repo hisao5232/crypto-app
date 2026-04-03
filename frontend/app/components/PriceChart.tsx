@@ -33,13 +33,27 @@ export default function PriceChart() {
     const fetchData = async () => {
       const limit = interval === '1d' ? 30 : 300;
       try {
-        const res = await fetch(`https://crypto-api.go-pro-world.net/api/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`);
+        // cache: 'no-store' を追加して、常にサーバーから最新を取得させる
+        const res = await fetch(
+          `https://crypto-api.go-pro-world.net/api/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`,
+          { cache: 'no-store' }
+        );
+        
+        if (!res.ok) throw new Error('Fetch failed');
         const data = await res.json();
+        
+        // 既存のデータをクリアしてからセット
         candlestickSeries.setData(data);
+        
+        // 全データが収まるように表示を調整
         chart.timeScale().fitContent();
-      } catch (e) { console.error(e); }
+        
+        console.log(`Data loaded for ${interval}:`, data.length, "items");
+      } catch (e) { 
+        console.error("Fetch Error:", e); 
+      }
     };
-
+    
     fetchData();
 
     // 3. WebSocketでのリアルタイム更新（1分足の時のみ）
