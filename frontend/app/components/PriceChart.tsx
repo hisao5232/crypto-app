@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { 
-  createChart, 
-  ColorType, 
-  CandlestickData, 
+import {
+  createChart,
+  ColorType,
+  CandlestickData,
   Time,
-  CandlestickSeries
+  CandlestickSeries,
+  IChartApi,
+  ISeriesApi
 } from 'lightweight-charts';
 
 export default function PriceChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // 1. チャートの初期化
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
@@ -28,6 +33,8 @@ export default function PriceChart() {
       height: 384,
       timeScale: {
         borderColor: '#333',
+        timeVisible: true,
+        secondsVisible: false,
       },
     });
 
@@ -39,50 +46,40 @@ export default function PriceChart() {
       wickDownColor: '#ef4444',
     });
 
-    // --- 過去30日分のダミーデータを生成 ---
-    const generateItems = () => {
-      const items: CandlestickData<Time>[] = [];
-      let currentPrice = 65000;
-      const now = new Date();
-      
-      for (let i = 30; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
+    chartRef.current = chart;
+    seriesRef.current = candlestickSeries;
+
+    // 2. バックエンドから本物のデータを取得する関数
+    const fetchHistoricalData = async () => {
+      try {
+        // バックエンドのエンドポイントを叩く
+        const response = await fetch("https://crypto-api.go-pro-world.net/api/klines?symbol=BTCUSDT&interval=1d&limit=30");
+        if (!response.ok) throw new Error("Network response was not ok");
         
-        // yyyy-mm-dd 形式の文字列を作成
-        const timeStr = date.toISOString().split('T')[0] as Time;
+        const data: CandlestickData<Time>[] = await response.json();
         
-        const open = currentPrice;
-        const high = open + Math.random() * 1000;
-        const low = open - Math.random() * 1000;
-        const close = low + Math.random() * (high - low);
+        // 取得したデータをチャートにセット
+        candlestickSeries.setData(data);
         
-        items.push({
-          time: timeStr,
-          open,
-          high,
-          low,
-          close,
-        });
-        
-        currentPrice = close; // 次の日の始値を前の日の終値にする
+        // 全データが収まるように表示を調整
+        chart.timeScale().fitContent();
+      } catch (error) {
+        console.error("Failed to fetch historical data:", error);
       }
-      return items;
     };
 
-    const data = generateItems();
-    candlestickSeries.setData(data);
-    
-    // 全データが収まるように表示を調整
-    chart.timeScale().fitContent();
+    fetchHistoricalData();
 
+    // 3. リサイズ対応
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
       }
     };
+
     window.addEventListener('resize', handleResize);
 
+    // クリーンアップ
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();

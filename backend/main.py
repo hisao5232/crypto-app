@@ -49,3 +49,22 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"ERROR: 予期せぬエラーが発生しました: {e}")
     # ★ ここが修正ポイント：finallyで無理にclose()を呼ばない
+
+@app.get("/api/klines")
+def get_klines(symbol: str = "BTCUSDT", interval: str = "1d", limit: int = 30):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    response = requests.get(url)
+    data = response.json()
+    
+    # lightweight-charts 用の形式に整形
+    formatted_data = []
+    for item in data:
+        formatted_data.append({
+            "time": int(item[0] / 1000), # ミリ秒を秒に変換
+            "open": float(item[1]),
+            "high": float(item[2]),
+            "low": float(item[3]),
+            "close": float(item[4]),
+        })
+    return formatted_data
+
