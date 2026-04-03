@@ -52,7 +52,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # ★ ここが修正ポイント：finallyで無理にclose()を呼ばない
 
 @app.get("/api/klines")
-def get_klines(symbol: str = "BTCUSDT", interval: str = "1d", limit: int = 30):
+def get_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 300):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     response = requests.get(url)
     data = response.json()
