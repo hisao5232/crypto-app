@@ -1,12 +1,14 @@
 import requests
-import asyncio
 import json
+import asyncio
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 
 app = FastAPI()
 
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,57 +17,77 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ストリームのURLを確認（ここが原因の可能性もあります）
-BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@ticker"
+# Binance Combined Stream URL (複数銘柄をまとめて取得)
+# 形式: wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker
+BASE_WS_URL = "wss://stream.binance.com:9443/stream?streams="
 
 @app.websocket("/ws/crypto")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, symbols: str = Query("BTCUSDT")):
+    """
+    クエリパラメータ symbols に基づいて複数の銘柄を購読する
+    例: /ws/crypto?symbols=BTCUSDT,ETHUSDT,SOLUSDT
+    """
     await websocket.accept()
-    print("DEBUG: ブラウザからのWebSocket接続を承諾しました")
+    
+    # 購読する銘柄リストを作成 (小文字にして binance の形式に合わせる)
+    symbol_list = [s.strip().lower() for s in symbols.split(",")]
+    streams = "/".join([f"{s}@ticker" for s in symbol_list])
+    full_ws_url = BASE_WS_URL + streams
+    
+    print(f"DEBUG: Connecting to Binance: {full_ws_url}")
     
     try:
-        # BinanceのWebSocketに接続
-        async with websockets.connect(BINANCE_WS_URL) as binance_ws:
-            print(f"DEBUG: Binanceに接続しました: {BINANCE_WS_URL}")
-            
+        async with websockets.connect(full_ws_url) as binance_ws:
             while True:
                 # Binanceから受信
-                binance_data = await binance_ws.recv()
-                msg = json.loads(binance_data)
+                raw_data = await binance_ws.recv()
+                data = json.loads(raw_data)
                 
-                # ログに生データを出す（確認できたら後で消す）
-                # print(f"DEBUG: 受信データ: {msg}") 
+                # Combined Streamの場合、データは 'data' キーの中に入っている
+                msg = data.get('data', {})
                 
                 # フロントエンドに送るデータを整形
+                # s: シンボル, p: 現在価格, dc: 24時間騰落率
                 payload = {
-                    "s": msg.get('s', 'BTCUSDT'),
-                    "p": msg.get('c', '0') # 'c' は最新価格
+                    "s": msg.get('s'),      # 例: BTCUSDT
+                    "p": msg.get('c'),      # Latest Price
+                    "dc": msg.get('P')      # 24h Price Change Percent
                 }
                 
-                # ブラウザへ送信
+                # フロントエンドへ送信
                 await websocket.send_json(payload)
                 
     except WebSocketDisconnect:
-        print("INFO: ブラウザ側から切断されました")
+        print(f"INFO: Browser disconnected ({symbols})")
     except Exception as e:
-        print(f"ERROR: 予期せぬエラーが発生しました: {e}")
-    # ★ ここが修正ポイント：finallyで無理にclose()を呼ばない
+        print(f"ERROR: Unexpected error in WS: {e}")
 
 @app.get("/api/klines")
 def get_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 500):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    response = requests.get(url)
-    data = response.json()
-    
-    # lightweight-charts 用の形式に整形
-    formatted_data = []
-    for item in data:
-        formatted_data.append({
-            "time": int(item[0] / 1000), # ミリ秒を秒に変換
-            "open": float(item[1]),
-            "high": float(item[2]),
-            "low": float(item[3]),
-            "close": float(item[4]),
-        })
-    return formatted_data
+    """
+    Klines (ローソク足) データを取得
+    """
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        formatted_data = []
+        for item in data:
+            formatted_data.append({
+                "time": int(item[0] / 1000),
+                "open": float(item[1]),
+                "high": float(item[2]),
+                "low": float(item[3]),
+                "close": float(item[4]),
+            })
+        return formatted_data
+    except Exception as e:
+        print(f"ERROR: Klines API error: {e}")
+        return []
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
