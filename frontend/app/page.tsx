@@ -6,7 +6,7 @@ import PriceChart from './components/PriceChart';
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-black">
       <Header />
       
       <main className="flex-grow max-w-[1800px] w-full mx-auto px-6 py-8">
@@ -16,29 +16,26 @@ export default function Home() {
           <div className="xl:col-span-1 flex flex-col gap-6">
             <RealtimePrice />
             
-            <div className="p-6 bg-card border border-border rounded-2xl shadow-xl">
+            <div className="p-6 bg-neutral-900/40 border border-white/5 rounded-2xl shadow-xl backdrop-blur-sm">
               <h3 className="text-sm font-medium text-neutral-500 mb-4 tracking-widest uppercase">Portfolio Allocation</h3>
-              <div className="h-40 rounded-full border-4 border-dashed border-border flex items-center justify-center text-neutral-700">
-                Donut Chart
+              <div className="h-40 rounded-full border-4 border-dashed border-neutral-800 flex items-center justify-center text-neutral-700">
+                Donut Chart (Coming Soon)
               </div>
             </div>
           </div>
           
           {/* 右側：チャートエリア */}
           <div className="xl:col-span-2 flex flex-col gap-6">
-            {/* childrenとしてPriceChartを渡す */}
-            <ChartCard 
-              title="BTCUSDT - 1m Interval" 
-              description="Today's Realtime Candlestick Chart" 
-              height="h-96"
-            >
+            
+            {/* 修正ポイント：titleとdescriptionを空、または削除して、PriceChart内部の表示を活かす */}
+            <ChartCard>
               <PriceChart />
             </ChartCard>
             
-            {/* こちらはchildrenを渡さないのでプレースホルダーが出る */}
+            {/* 下段のカード（今後用） */}
             <ChartCard 
-              title="Weekly Performance" 
-              description="Bitcoin Price Trend (Last 7 Days)" 
+              title="Market Statistics" 
+              description="Historical analysis and volume trends" 
               height="h-60"
             />
           </div>
