@@ -23,7 +23,12 @@ export default function PriceChart() {
         timeVisible: true, 
         secondsVisible: false,
         borderColor: '#333',
+        shiftVisibleRangeOnNewBar: true, // 新しい足が追加されたら自動スクロール
+        rightOffset: 12, // 右端に余白を作って最新の足を見やすくする
       },
+      // マウス操作の感度設定
+      handleScroll: true,
+      handleScale: true,
     });
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
@@ -36,7 +41,8 @@ export default function PriceChart() {
 
     // --- 2. 過去データの取得 ---
     const fetchData = async () => {
-      const limit = interval === '1d' ? 30 : 300;
+      // 1dなら365日分、1mなら300分分を取得
+      const limit = interval === '1d' ? 365 : 300;
       const url = `https://crypto-api.go-pro-world.net/api/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}&t=${Date.now()}`;
       
       try {
@@ -45,9 +51,13 @@ export default function PriceChart() {
         
         if (data && Array.isArray(data) && data.length > 0) {
           candlestickSeries.setData(data);
-          chart.timeScale().fitContent();
           
-          // 過去データの最後の一本を「最新の足」の初期値として保持
+          // 1分足（Live）の時は全体を表示、日足の時は直近が見やすいように調整
+          if (interval === '1m') {
+            chart.timeScale().fitContent();
+          }
+          
+          // 過去データの最後の一本を初期値として保持
           const lastData = data[data.length - 1];
           lastBarRef.current = { ...lastData };
         }
@@ -65,11 +75,9 @@ export default function PriceChart() {
       socket.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         const price = parseFloat(msg.p);
-        // 現在の「分」の開始時刻（秒単位）
         const currentTime = (Math.floor(Date.now() / 1000 / 60) * 60) as Time;
 
         if (!lastBarRef.current || currentTime > lastBarRef.current.time) {
-          // 新しい分に入った、または最初のデータの場合：新しい足を作る
           lastBarRef.current = {
             time: currentTime,
             open: price,
@@ -78,13 +86,11 @@ export default function PriceChart() {
             close: price,
           };
         } else {
-          // 同じ分の中での更新：高値・安値を判定して更新
           lastBarRef.current.high = Math.max(lastBarRef.current.high, price);
           lastBarRef.current.low = Math.min(lastBarRef.current.low, price);
           lastBarRef.current.close = price;
         }
 
-        // グラフの最後の一本を更新（これで箱とヒゲが動く）
         candlestickSeries.update(lastBarRef.current);
       };
     }
@@ -107,27 +113,30 @@ export default function PriceChart() {
   return (
     <div className="flex flex-col w-full p-4 bg-neutral-900/50 rounded-xl border border-white/5 shadow-2xl">
       <div className="flex justify-between items-center mb-4 px-2">
-        <h3 className="text-sm font-bold text-neutral-200 tracking-wider">BTC / USDT</h3>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${interval === '1m' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
+          <h3 className="text-sm font-bold text-neutral-200 tracking-wider">BTC / USDT</h3>
+        </div>
         <div className="flex gap-2">
           <button 
             onClick={() => setInterval('1d')}
             className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md border transition-all ${
               interval === '1d' 
-              ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
-              : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200'
+              ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]' 
+              : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700'
             }`}
           >
-            1 Day
+            Past 1 Year (1D)
           </button>
           <button 
             onClick={() => setInterval('1m')}
             className={`px-4 py-1.5 text-[10px] font-bold uppercase rounded-md border transition-all ${
               interval === '1m' 
-              ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
-              : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200'
+              ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+              : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700'
             }`}
           >
-            1 Min Live
+            Live (1M)
           </button>
         </div>
       </div>
