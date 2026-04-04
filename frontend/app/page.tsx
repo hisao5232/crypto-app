@@ -3,6 +3,7 @@ import Footer from './components/Footer';
 import RealtimePrice from './components/RealtimePrice';
 import ChartCard from './components/ChartCard';
 import PriceChart from './components/PriceChart';
+import PortfolioAllocation from './components/PortfolioAllocation';
 
 export default function Home() {
   return (
@@ -16,12 +17,9 @@ export default function Home() {
           <div className="xl:col-span-1 flex flex-col gap-6">
             <RealtimePrice />
             
-            <div className="p-6 bg-neutral-900/40 border border-white/5 rounded-2xl shadow-xl backdrop-blur-sm">
-              <h3 className="text-sm font-medium text-neutral-500 mb-4 tracking-widest uppercase">Portfolio Allocation</h3>
-              <div className="h-40 rounded-full border-4 border-dashed border-neutral-800 flex items-center justify-center text-neutral-700">
-                Donut Chart (Coming Soon)
-              </div>
-            </div>
+            <ChartCard title="Portfolio Allocation" description="Current Asset Distribution">
+              <PortfolioAllocation />
+            </ChartCard>
           </div>
           
           {/* 右側：チャートエリア */}

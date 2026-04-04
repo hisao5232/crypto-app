@@ -3,17 +3,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CandlestickSeries, IChartApi, ISeriesApi, Time, CandlestickData } from 'lightweight-charts';
 
+// 対応する銘柄の定義
+const SYMBOLS = [
+  { id: 'BTCUSDT', label: 'BTC', color: 'bg-[#F7931A]' },
+  { id: 'ETHUSDT', label: 'ETH', color: 'bg-[#627EEA]' },
+  { id: 'SOLUSDT', label: 'SOL', color: 'bg-[#14F195]' },
+];
+
 export default function PriceChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [interval, setInterval] = useState<'1d' | '1m'>('1d');
+  const [symbol, setSymbol] = useState('BTCUSDT'); // 選択中の銘柄
   
-  // 現在更新中のローソク足を保持するためのRef（再レンダリングさせずに値を保持）
   const lastBarRef = useRef<CandlestickData<Time> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // --- 1. チャート初期化 ---
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#a3a3a3' },
       grid: { vertLines: { color: '#262626' }, horzLines: { color: '#262626' } },
@@ -23,8 +29,8 @@ export default function PriceChart() {
         timeVisible: true, 
         secondsVisible: false,
         borderColor: '#333',
-        shiftVisibleRangeOnNewBar: true, // 新しい足が追加されたら自動スクロール
-        rightOffset: 15, // 右端に余白を作って最新の足を見やすくする
+        shiftVisibleRangeOnNewBar: true,
+        rightOffset: 15,
       },
       handleScroll: true,
       handleScale: true,
@@ -37,10 +43,10 @@ export default function PriceChart() {
 
     lastBarRef.current = null;
 
-    // --- 2. 過去データの取得 ---
     const fetchData = async () => {
       const limit = interval === '1d' ? 365 : 300;
-      const url = `https://crypto-api.go-pro-world.net/api/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}&t=${Date.now()}`;
+      // symbolを動的に埋め込み
+      const url = `https://crypto-api.go-pro-world.net/api/klines?symbol=${symbol}&interval=${interval}&limit=${limit}&t=${Date.now()}`;
       
       try {
         const res = await fetch(url, { cache: 'no-store' });
@@ -48,11 +54,7 @@ export default function PriceChart() {
         
         if (data && Array.isArray(data) && data.length > 0) {
           candlestickSeries.setData(data);
-          
-          if (interval === '1m') {
-            chart.timeScale().fitContent();
-          }
-          
+          if (interval === '1m') chart.timeScale().fitContent();
           const lastData = data[data.length - 1];
           lastBarRef.current = { ...lastData };
         }
@@ -63,10 +65,10 @@ export default function PriceChart() {
 
     fetchData();
 
-    // --- 3. WebSocket (1mの時のみリアルタイム更新) ---
     let socket: WebSocket | null = null;
     if (interval === '1m') {
-      socket = new WebSocket('wss://crypto-api.go-pro-world.net/ws/crypto');
+      // WebSocketのURLにsymbolパラメータを渡す（バックエンドが対応している前提）
+      socket = new WebSocket(`wss://crypto-api.go-pro-world.net/ws/crypto?symbol=${symbol}`);
       socket.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         const price = parseFloat(msg.p);
@@ -82,15 +84,12 @@ export default function PriceChart() {
           lastBarRef.current.low = Math.min(lastBarRef.current.low, price);
           lastBarRef.current.close = price;
         }
-
         candlestickSeries.update(lastBarRef.current);
       };
     }
 
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
+      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
     window.addEventListener('resize', handleResize);
 
@@ -99,29 +98,43 @@ export default function PriceChart() {
       socket?.close();
       chart.remove();
     };
-  }, [interval]);
+  }, [interval, symbol]); // symbolが変わった時も再実行
 
   return (
     <div className="flex flex-col w-full p-6 bg-neutral-900/60 rounded-2xl border border-white/5 shadow-2xl backdrop-blur-md">
-      <div className="flex justify-between items-center mb-6 px-2">
-        <div className="flex items-center gap-3">
-          {/* 状態インジケーター */}
-          <div className={`w-2.5 h-2.5 rounded-full ${interval === '1m' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
-          <div>
-            <h3 className="text-lg font-bold text-neutral-100 tracking-tight">BTC / USDT</h3>
-            <p className="text-[10px] text-neutral-500 font-medium uppercase tracking-widest">
-              {interval === '1m' ? 'Realtime Market' : 'Historical Data'}
-            </p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 px-2">
+        
+        {/* 左側：銘柄選択とステータス */}
+        <div className="flex items-center gap-4">
+          <div className="flex bg-black/30 p-1 rounded-xl border border-white/5">
+            {SYMBOLS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSymbol(s.id)}
+                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  symbol === s.id ? 'bg-neutral-700 text-white shadow-md' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${interval === '1m' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
+              <h3 className="text-lg font-bold text-neutral-100 tracking-tight">
+                {SYMBOLS.find(s => s.id === symbol)?.label} / USDT
+              </h3>
+            </div>
           </div>
         </div>
 
+        {/* 右側：時間軸選択 */}
         <div className="flex gap-3 bg-black/20 p-1 rounded-xl border border-white/5">
           <button 
             onClick={() => setInterval('1d')}
             className={`px-5 py-2 text-[11px] font-bold rounded-lg transition-all duration-300 ${
-              interval === '1d' 
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' 
-              : 'text-neutral-500 hover:text-neutral-300'
+              interval === '1d' ? 'bg-blue-600 text-white shadow-lg' : 'text-neutral-500'
             }`}
           >
             Past 1 Year (1D)
@@ -129,9 +142,7 @@ export default function PriceChart() {
           <button 
             onClick={() => setInterval('1m')}
             className={`px-5 py-2 text-[11px] font-bold rounded-lg transition-all duration-300 ${
-              interval === '1m' 
-              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40' 
-              : 'text-neutral-500 hover:text-neutral-300'
+              interval === '1m' ? 'bg-emerald-600 text-white shadow-lg' : 'text-neutral-500'
             }`}
           >
             Live (1M)
