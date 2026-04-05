@@ -71,7 +71,13 @@ export default function PriceChart() {
       socket = new WebSocket(`wss://crypto-api.go-pro-world.net/ws/crypto?symbol=${symbol}`);
       socket.onmessage = (event) => {
         const msg = JSON.parse(event.data);
+        
+        // ★重要: 届いたデータのシンボル(msg.s)が、現在選択中のsymbolと一致しない場合は無視する
+        if (msg.s !== symbol) return;
+
         const price = parseFloat(msg.p);
+        if (isNaN(price)) return; // 数値でない場合はスキップ
+
         const currentTime = (Math.floor(Date.now() / 1000 / 60) * 60) as Time;
 
         if (!lastBarRef.current || currentTime > lastBarRef.current.time) {

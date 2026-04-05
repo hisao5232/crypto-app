@@ -22,45 +22,43 @@ app.add_middleware(
 BASE_WS_URL = "wss://stream.binance.com:9443/stream?streams="
 
 @app.websocket("/ws/crypto")
-async def websocket_endpoint(websocket: WebSocket, symbols: str = Query("BTCUSDT")):
-    """
-    クエリパラメータ symbols に基づいて複数の銘柄を購読する
-    例: /ws/crypto?symbols=BTCUSDT,ETHUSDT,SOLUSDT
-    """
+async def websocket_endpoint(websocket: WebSocket, symbol: str = "BTCUSDT", symbols: str = None):
     await websocket.accept()
     
-    # 購読する銘柄リストを作成 (小文字にして binance の形式に合わせる)
-    symbol_list = [s.strip().lower() for s in symbols.split(",")]
-    streams = "/".join([f"{s}@ticker" for s in symbol_list])
+    # 1. 複数銘柄リクエスト（RealtimePrice用）か、単一銘柄（PriceChart用）かを判定
+    if symbols:
+        # symbols=BTCUSDT,ETHUSDT... の形式（RealtimePrice用）
+        target_symbols = [s.strip().lower() for s in symbols.split(",")]
+    else:
+        # symbol=BTCUSDT の形式（PriceChart用）
+        target_symbols = [symbol.strip().lower()]
+
+    streams = "/".join([f"{s}@ticker" for s in target_symbols])
     full_ws_url = BASE_WS_URL + streams
-    
-    print(f"DEBUG: Connecting to Binance: {full_ws_url}")
     
     try:
         async with websockets.connect(full_ws_url) as binance_ws:
             while True:
-                # Binanceから受信
                 raw_data = await binance_ws.recv()
                 data = json.loads(raw_data)
-                
-                # Combined Streamの場合、データは 'data' キーの中に入っている
                 msg = data.get('data', {})
                 
-                # フロントエンドに送るデータを整形
-                # s: シンボル, p: 現在価格, dc: 24時間騰落率
-                payload = {
-                    "s": msg.get('s'),      # 例: BTCUSDT
-                    "p": msg.get('c'),      # Latest Price
-                    "dc": msg.get('P')      # 24h Price Change Percent
-                }
+                # 受信したデータのシンボルを確認
+                current_symbol = msg.get('s')
                 
-                # フロントエンドへ送信
-                await websocket.send_json(payload)
-                
+                # 指定された銘柄リストに含まれる場合のみ送信
+                if current_symbol and current_symbol.lower() in target_symbols:
+                    payload = {
+                        "s": current_symbol,
+                        "p": msg.get('c'),
+                        "dc": msg.get('P')
+                    }
+                    await websocket.send_json(payload)
+                    
     except WebSocketDisconnect:
-        print(f"INFO: Browser disconnected ({symbols})")
+        pass 
     except Exception as e:
-        print(f"ERROR: Unexpected error in WS: {e}")
+        print(f"WS Error: {e}")
 
 @app.get("/api/klines")
 def get_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 500):
