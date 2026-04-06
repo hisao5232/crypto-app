@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, CandlestickSeries, IChartApi, ISeriesApi, Time, CandlestickData } from 'lightweight-charts';
+import { useEffect, useRef } from 'react';
+import { createChart, ColorType, CandlestickSeries, Time, CandlestickData } from 'lightweight-charts';
 
 // 対応する銘柄の定義
 const SYMBOLS = [
@@ -10,21 +10,33 @@ const SYMBOLS = [
   { id: 'SOLUSDT', label: 'SOL', color: 'bg-[#14F195]' },
 ];
 
-export default function PriceChart() {
+// 親から受け取るPropsの型定義
+interface PriceChartProps {
+  symbol: string;
+  setSymbol: (s: string) => void;
+  interval: '1d' | '1m';
+  setInterval: (i: '1d' | '1m') => void;
+}
+
+export default function PriceChart({ symbol, setSymbol, interval, setInterval }: PriceChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [interval, setInterval] = useState<'1d' | '1m'>('1d');
-  const [symbol, setSymbol] = useState('BTCUSDT'); // 選択中の銘柄
-  
   const lastBarRef = useRef<CandlestickData<Time> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // チャートの初期化
     const chart = createChart(chartContainerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#a3a3a3' },
-      grid: { vertLines: { color: '#262626' }, horzLines: { color: '#262626' } },
+      layout: { 
+        background: { type: ColorType.Solid, color: 'transparent' }, 
+        textColor: '#a3a3a3' 
+      },
+      grid: { 
+        vertLines: { color: '#262626' }, 
+        horzLines: { color: '#262626' } 
+      },
       width: chartContainerRef.current.clientWidth,
-      height: 384,
+      height: 400,
       timeScale: { 
         timeVisible: true, 
         secondsVisible: false,
@@ -37,15 +49,18 @@ export default function PriceChart() {
     });
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
-      wickUpColor: '#10b981', wickDownColor: '#ef4444',
+      upColor: '#10b981', 
+      downColor: '#ef4444', 
+      borderVisible: false,
+      wickUpColor: '#10b981', 
+      wickDownColor: '#ef4444',
     });
 
     lastBarRef.current = null;
 
+    // 過去データの取得
     const fetchData = async () => {
       const limit = interval === '1d' ? 365 : 300;
-      // symbolを動的に埋め込み
       const url = `https://crypto-api.go-pro-world.net/api/klines?symbol=${symbol}&interval=${interval}&limit=${limit}&t=${Date.now()}`;
       
       try {
@@ -65,25 +80,29 @@ export default function PriceChart() {
 
     fetchData();
 
+    // WebSocket リアルタイム更新
     let socket: WebSocket | null = null;
     if (interval === '1m') {
-      // WebSocketのURLにsymbolパラメータを渡す（バックエンドが対応している前提）
       socket = new WebSocket(`wss://crypto-api.go-pro-world.net/ws/crypto?symbol=${symbol}`);
+      
       socket.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         
-        // ★重要: 届いたデータのシンボル(msg.s)が、現在選択中のsymbolと一致しない場合は無視する
+        // 届いたデータの銘柄が現在の選択と一致するかチェック（混線防止）
         if (msg.s !== symbol) return;
 
         const price = parseFloat(msg.p);
-        if (isNaN(price)) return; // 数値でない場合はスキップ
+        if (isNaN(price)) return;
 
         const currentTime = (Math.floor(Date.now() / 1000 / 60) * 60) as Time;
 
         if (!lastBarRef.current || currentTime > lastBarRef.current.time) {
           lastBarRef.current = {
             time: currentTime,
-            open: price, high: price, low: price, close: price,
+            open: price, 
+            high: price, 
+            low: price, 
+            close: price,
           };
         } else {
           lastBarRef.current.high = Math.max(lastBarRef.current.high, price);
@@ -95,7 +114,9 @@ export default function PriceChart() {
     }
 
     const handleResize = () => {
-      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (chartContainerRef.current) {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -104,13 +125,13 @@ export default function PriceChart() {
       socket?.close();
       chart.remove();
     };
-  }, [interval, symbol]); // symbolが変わった時も再実行
+  }, [interval, symbol]); // interval または symbol が変わるたびに再描画
 
   return (
     <div className="flex flex-col w-full p-6 bg-neutral-900/60 rounded-2xl border border-white/5 shadow-2xl backdrop-blur-md">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 px-2">
         
-        {/* 左側：銘柄選択とステータス */}
+        {/* 左側：銘柄選択 */}
         <div className="flex items-center gap-4">
           <div className="flex bg-black/30 p-1 rounded-xl border border-white/5">
             {SYMBOLS.map((s) => (
@@ -118,7 +139,9 @@ export default function PriceChart() {
                 key={s.id}
                 onClick={() => setSymbol(s.id)}
                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  symbol === s.id ? 'bg-neutral-700 text-white shadow-md' : 'text-neutral-500 hover:text-neutral-300'
+                  symbol === s.id 
+                    ? 'bg-neutral-700 text-white shadow-md' 
+                    : 'text-neutral-500 hover:text-neutral-300'
                 }`}
               >
                 {s.label}
