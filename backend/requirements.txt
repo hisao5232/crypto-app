@@ -3,3 +3,5 @@ uvicorn
 websockets
 psycopg2-binary
 requests
+pandas
+numpy

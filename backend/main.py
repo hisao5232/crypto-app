@@ -5,6 +5,8 @@ import websockets
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
+import pandas as pd
+import numpy as np
 
 app = FastAPI()
 
@@ -85,6 +87,45 @@ def get_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 500):
         print(f"ERROR: Klines API error: {e}")
         return []
 
+# --- RSI計算ロジック ---
+def calculate_rsi(prices, period=14):
+    if len(prices) < period:
+        return 50.0  # データ不足時は中立値を返す
+    
+    delta = pd.Series(prices).diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return float(rsi.iloc[-1])
+
+# --- 既存の get_klines を拡張して RSI も返せるようにする ---
+@app.get("/api/market_data")
+def get_market_data(symbol: str = "BTCUSDT"):
+    # 1. ローソク足取得 (既存ロジック流用)
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval=1h&limit=100"
+    res = requests.get(url).json()
+    
+    # 終値リストを作成
+    close_prices = [float(item[4]) for item in res]
+    
+    # 2. RSI計算
+    current_rsi = calculate_rsi(close_prices)
+    
+    # 3. 関連ニュース (仮の実装：以前作ったスクレイピング関数をここに統合)
+    # ここでは例として静的なデータを返しますが、実際にはRSSやPR TIMESから取得します
+    news = [
+        {"title": f"{symbol} 市場分析: 強気相場が継続中", "source": "CryptoNews", "time": "10分前"},
+        {"title": "FRBの金利据え置き発表、仮想通貨市場に好影響か", "source": "Reuters", "time": "1時間前"},
+    ]
+    
+    return {
+        "symbol": symbol,
+        "rsi": round(current_rsi, 2),
+        "news": news
+    }
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
