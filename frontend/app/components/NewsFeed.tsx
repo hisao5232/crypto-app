@@ -19,7 +19,7 @@ export default function NewsFeed({ symbol }: { symbol: string }) {
       try {
         // バックエンドのURLを指定
         const coin = symbol.replace('USDT', '');
-        const res = await fetch(`https://your-api-domain.com/api/news?symbol=${coin}`);
+        const res = await fetch(`https://crypto-api.go-pro-world.net/api/news?symbol=${coin}`);
         const data = await res.json();
         setNews(data);
       } catch (e) {
