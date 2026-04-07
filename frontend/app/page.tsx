@@ -7,7 +7,8 @@ import RealtimePrice from './components/RealtimePrice';
 import ChartCard from './components/ChartCard';
 import PriceChart from './components/PriceChart';
 import PortfolioAllocation from './components/PortfolioAllocation';
-import MarketStats from './components/MarketStats'; // 忘れずにインポート！
+import MarketStats from './components/MarketStats'; 
+import NewsFeed from './components/NewsFeed';
 
 export default function Home() {
   // 親で共通のsymbolを管理する
@@ -40,11 +41,18 @@ export default function Home() {
               />
             </ChartCard>
             
-            <ChartCard title="Market Statistics" description={`${symbol} 24h Performance`}>
-              <MarketStats symbol={symbol} />
-            </ChartCard>
-          </div>
+            {/* 統計とニュースを横並びにする（または縦に並べる） */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ChartCard title="Market Statistics" description={`${symbol} 24h Performance`}>
+                <MarketStats symbol={symbol} />
+              </ChartCard>
 
+              {/* ★ここに追加！ */}
+              <ChartCard title="Latest News" description={`${symbol} Related News`}>
+                <NewsFeed symbol={symbol} />
+              </ChartCard>
+          </div>
+          </div>
         </div>
       </main>
       <Footer />
