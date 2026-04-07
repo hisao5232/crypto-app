@@ -1,4 +1,4 @@
-'use client'; // Client Componentにする
+'use client';
 
 import { useState } from 'react';
 import Header from './components/Header';
@@ -11,7 +11,6 @@ import MarketStats from './components/MarketStats';
 import NewsFeed from './components/NewsFeed';
 
 export default function Home() {
-  // 親で共通のsymbolを管理する
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState<'1d' | '1m'>('1d');
 
@@ -21,7 +20,7 @@ export default function Home() {
       <main className="flex-grow max-w-[1800px] w-full mx-auto px-6 py-8">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           
-          {/* 左カラム */}
+          {/* 左カラム：市場監視とポートフォリオ */}
           <div className="xl:col-span-1 flex flex-col gap-6">
             <RealtimePrice />
             <ChartCard title="Portfolio Allocation">
@@ -29,10 +28,9 @@ export default function Home() {
             </ChartCard>
           </div>
           
-          {/* 右カラム */}
+          {/* 右カラム：メインチャート、統計、ニュース */}
           <div className="xl:col-span-2 flex flex-col gap-6">
             <ChartCard>
-              {/* 3. すべての Props を渡す */}
               <PriceChart 
                 symbol={symbol} 
                 setSymbol={setSymbol} 
@@ -41,19 +39,19 @@ export default function Home() {
               />
             </ChartCard>
             
-            {/* 統計とニュースを横並びにする（または縦に並べる） */}
+            {/* 統計とニュースを横並びにするグリッド */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ChartCard title="Market Statistics" description={`${symbol} 24h Performance`}>
                 <MarketStats symbol={symbol} />
               </ChartCard>
 
-              {/* ★ここに追加！ */}
               <ChartCard title="Latest News" description={`${symbol} Related News`}>
                 <NewsFeed symbol={symbol} />
               </ChartCard>
-          </div>
-          </div>
-        </div>
+            </div> {/* ここで grid 終了 */}
+          </div> {/* ここで 右カラム 終了 */}
+
+        </div> {/* ここで 全体の grid 終了 */}
       </main>
       <Footer />
     </div>
