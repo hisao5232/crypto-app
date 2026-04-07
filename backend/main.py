@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import pandas as pd
 import numpy as np
+import feedparser
 
 app = FastAPI()
 
@@ -125,7 +126,40 @@ def get_market_data(symbol: str = "BTCUSDT"):
         "rsi": round(current_rsi, 2),
         "news": news
     }
+
+def get_crypto_news(symbol: str = "BTC"):
+    # PR TIMESのテクノロジー・金融系RSSなどを利用
+    RSS_URL = "https://prtimes.jp/index.rdf"
+    feed = feedparser.parse(RSS_URL)
     
+    # 銘柄に関連するキーワードを設定
+    keywords = {
+        "BTC": ["ビットコイン", "Bitcoin", "暗号資産", "仮想通貨"],
+        "ETH": ["イーサリアム", "Ethereum", "Web3", "NFT"],
+        "SOL": ["ソラナ", "Solana", "ブロックチェーン"]
+    }
+    
+    # symbolに対応するキーワードを取得（デフォルトは暗号資産一般）
+    target_kws = keywords.get(symbol.split('USDT')[0], ["暗号資産"])
+    
+    relevant_news = []
+    for entry in feed.entries:
+        # タイトルか要約にキーワードが含まれているかチェック
+        if any(kw in entry.title or kw in entry.summary for kw in target_kws):
+            relevant_news.append({
+                "title": entry.title,
+                "link": entry.link,
+                "source": "PR TIMES",
+                "time": entry.published if 'published' in entry else "Just now"
+            })
+            if len(relevant_news) >= 5: break # 最大5件
+
+    # ニュースが空の場合のフォールバック
+    if not relevant_news:
+        relevant_news = [{"title": f"{symbol} に関する最新ニュースは現在ありません", "link": "#", "source": "System", "time": ""}]
+
+    return relevant_news
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
