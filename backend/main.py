@@ -24,41 +24,58 @@ app.add_middleware(
 # Binance WebSocket Base URL
 BASE_WS_URL = "wss://stream.binance.com:9443/stream?streams="
 
-# --- 共通ロジック：ニュース取得 ---
+# --- ニュース取得ロジックの強化版 ---
 def fetch_relevant_news(symbol: str):
-    """PR TIMESから銘柄に関連するニュースをフィルタリングして取得"""
-    RSS_URL = "https://prtimes.jp/index.rdf"
-    feed = feedparser.parse(RSS_URL)
+    # 取得したいRSSソースのリスト
+    SOURCES = [
+        {"name": "CoinPost", "url": "https://coinpost.jp/?feed=rss2"},
+        {"name": "CoinDesk Japan", "url": "https://www.coindeskjapan.com/feed/"},
+        {"name": "PR TIMES (Crypto)", "url": "https://prtimes.jp/index.rdf"}
+    ]
     
-    # symbolから純粋な通貨名を取得 (BTCUSDT -> BTC)
     coin_name = symbol.replace('USDT', '').upper()
-    
     keywords = {
-        "BTC": ["ビットコイン", "Bitcoin", "暗号資産", "仮想通貨"],
-        "ETH": ["イーサリアム", "Ethereum", "Web3", "NFT"],
-        "SOL": ["ソラナ", "Solana", "ブロックチェーン"]
+        "BTC": ["ビットコイン", "Bitcoin", "BTC"],
+        "ETH": ["イーサリアム", "Ethereum", "ETH", "Web3"],
+        "SOL": ["ソラナ", "Solana", "SOL"]
     }
-    
     target_kws = keywords.get(coin_name, ["暗号資産", "仮想通貨"])
     
-    relevant_news = []
-    for entry in feed.entries:
-        title = entry.get('title', '')
-        summary = entry.get('summary', '')
-        
-        if any(kw in title or kw in summary for kw in target_kws):
-            relevant_news.append({
-                "title": title,
-                "link": entry.get('link', '#'),
-                "source": "PR TIMES",
-                "time": entry.get('published', 'Just now')
-            })
-            if len(relevant_news) >= 5: break
-
-    if not relevant_news:
-        relevant_news = [{"title": f"{coin_name} に関する最新ニュースは現在ありません", "link": "#", "source": "System", "time": ""}]
+    all_news = []
     
-    return relevant_news
+    for source in SOURCES:
+        try:
+            feed = feedparser.parse(source["url"])
+            for entry in feed.entries:
+                title = entry.get('title', '')
+                summary = entry.get('summary', '') or entry.get('description', '')
+                
+                # キーワードマッチング
+                if any(kw.lower() in title.lower() or kw.lower() in summary.lower() for kw in target_kws):
+                    all_news.append({
+                        "title": title,
+                        "link": entry.get('link', '#'),
+                        "source": source["name"],
+                        "time": entry.get('published', 'Just now')
+                    })
+        except Exception as e:
+            print(f"Error fetching {source['name']}: {e}")
+
+    # 重複排除（同じタイトルの記事が複数ソースにある場合）
+    unique_news = []
+    seen_titles = set()
+    for n in all_news:
+        if n["title"] not in seen_titles:
+            unique_news.append(n)
+            seen_titles.add(n["title"])
+
+    # 最新の5〜10件に絞る
+    final_news = unique_news[:8]
+
+    if not final_news:
+        final_news = [{"title": f"{coin_name} に関する最新ニュースはありません", "link": "#", "source": "System", "time": ""}]
+    
+    return final_news
 
 # --- 共通ロジック：RSI計算 ---
 def calculate_rsi(prices, period=14):
