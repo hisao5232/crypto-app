@@ -105,13 +105,32 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str = "BTCUSDT", symb
 
 # --- エンドポイント：Klines (チャート用) ---
 @app.get("/api/klines")
-def get_klines(symbol: str = "BTCUSDT", interval: str = "1m", limit: int = 500):
+def get_klines(symbol: str = "BTCUSDT", interval: str = "1d", limit: int = 500):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
     try:
         response = requests.get(url, timeout=5)
-        response.raise_for_status()
         data = response.json()
-        return [{"time": int(item[0] / 1000), "open": float(item[1]), "high": float(item[2]), "low": float(item[3]), "close": float(item[4])} for item in data]
+        
+        # DataFrameに変換して計算
+        df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'vol', 'close_time', 'q_vol', 'trades', 'taker_base', 'taker_quote', 'ignore'])
+        df['close'] = df['close'].astype(float)
+        
+        # 移動平均の計算
+        df['ma25'] = df['close'].rolling(window=25).mean()
+        df['ma75'] = df['close'].rolling(window=75).mean()
+
+        formatted_data = []
+        for i in range(len(df)):
+            formatted_data.append({
+                "time": int(df.iloc[i]['time'] / 1000),
+                "open": float(df.iloc[i]['open']),
+                "high": float(df.iloc[i]['high']),
+                "low": float(df.iloc[i]['low']),
+                "close": float(df.iloc[i]['close']),
+                "ma25": float(df.iloc[i]['ma25']) if not pd.isna(df.iloc[i]['ma25']) else None,
+                "ma75": float(df.iloc[i]['ma75']) if not pd.isna(df.iloc[i]['ma75']) else None,
+            })
+        return formatted_data
     except Exception as e:
         return []
 
@@ -129,7 +148,7 @@ def get_market_data(symbol: str = "BTCUSDT"):
     except:
         return {"symbol": symbol, "rsi": 50.0, "news": []}
 
-# --- エンドポイント：本物のニュース (ここが足りなかった！) ---
+# --- エンドポイント：本物のニュース
 @app.get("/api/news")
 def get_news_api(symbol: str = "BTC"):
     """フロントエンドのNewsFeedから呼ばれるエンドポイント"""
