@@ -11,7 +11,7 @@ import feedparser
 import os
 from groq import Groq
 
-# Groqクライアントの初期化（APIキーは環境変数から取得）
+# Groqクライアントの初期化
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 app = FastAPI()
@@ -25,16 +25,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Binance WebSocket Base URL
 BASE_WS_URL = "wss://stream.binance.com:9443/stream?streams="
 
-# --- ニュース取得ロジックの強化版 ---
-def fetch_relevant_news(symbol: str):
-    # 取得したいRSSソースのリスト
+# --- AI解析ロジック (非同期化) ---
+async def analyze_news_with_ai(title: str, summary: str):
+    """
+    重いAI解析を非同期のスレッドで実行し、全体をブロックしないようにする
+    """
+    loop = asyncio.get_event_loop()
+    
+    def call_groq():
+        prompt = f"""
+        分析しJSON形式で回答:
+        1. summary: 15文字以内で要約
+        2. sentiment: 'positive', 'negative', 'neutral' のいずれか
+
+        ニュースタイトル: {title}
+        概要: {summary[:150]}
+        """
+        try:
+            return client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile",
+                response_format={"type": "json_object"},
+                timeout=5.0  # 5秒でタイムアウト設定
+            )
+        except Exception as e:
+            print(f"Groq API Error: {e}")
+            return None
+
+    try:
+        chat_completion = await loop.run_in_executor(None, call_groq)
+        if chat_completion:
+            return json.loads(chat_completion.choices[0].message.content)
+        return {"summary": title[:15], "sentiment": "neutral"}
+    except:
+        return {"summary": title[:15], "sentiment": "neutral"}
+
+# --- ニュース取得ロジック (並列実行版) ---
+async def fetch_relevant_news(symbol: str):
     SOURCES = [
         {"name": "CoinPost", "url": "https://coinpost.jp/?feed=rss2"},
         {"name": "CoinDesk Japan", "url": "https://www.coindeskjapan.com/feed/"},
-        {"name": "PR TIMES (Crypto)", "url": "https://prtimes.jp/index.rdf"}
+        {"name": "PR TIMES", "url": "https://prtimes.jp/index.rdf"}
     ]
     
     coin_name = symbol.replace('USDT', '').upper()
@@ -45,44 +78,47 @@ def fetch_relevant_news(symbol: str):
     }
     target_kws = keywords.get(coin_name, ["暗号資産", "仮想通貨"])
     
-    all_news = []
-    
+    raw_news = []
+    seen_titles = set()
+
+    # 1. RSSからデータを収集
     for source in SOURCES:
         try:
             feed = feedparser.parse(source["url"])
             for entry in feed.entries:
                 title = entry.get('title', '')
                 summary = entry.get('summary', '') or entry.get('description', '')
-                analysis = analyze_news_with_ai(title, summary)
-
-                # キーワードマッチング
+                
                 if any(kw.lower() in title.lower() or kw.lower() in summary.lower() for kw in target_kws):
-                    all_news.append({
-                        "title": title,
-                        "ai_summary": analysis["summary"],     # AI要約
-                        "sentiment": analysis["sentiment"],     # センチメント
-                        "link": entry.get('link', '#'),
-                        "source": source["name"],
-                        "time": entry.get('published', 'Just now')
-                    })
+                    if title not in seen_titles:
+                        raw_news.append({
+                            "title": title,
+                            "summary": summary,
+                            "link": entry.get('link', '#'),
+                            "source": source["name"],
+                            "time": entry.get('published', 'Just now')
+                        })
+                        seen_titles.add(title)
+                if len(raw_news) >= 15: break # 収集しすぎ防止
         except Exception as e:
             print(f"Error fetching {source['name']}: {e}")
 
-    # 重複排除（同じタイトルの記事が複数ソースにある場合）
-    unique_news = []
-    seen_titles = set()
-    for n in all_news:
-        if n["title"] not in seen_titles:
-            unique_news.append(n)
-            seen_titles.add(n["title"])
+    # 2. 上位5件に対してAI解析を一斉に実行（並列処理）
+    final_items = raw_news[:5]
+    if not final_items:
+        return [{"title": f"{coin_name} に関する最新ニュースはありません", "link": "#", "source": "System", "time": "", "ai_summary": "記事なし", "sentiment": "neutral"}]
 
-    # 最新の5〜10件に絞る
-    final_news = unique_news[:8]
+    tasks = [analyze_news_with_ai(n["title"], n["summary"]) for n in final_items]
+    ai_results = await asyncio.gather(*tasks)
 
-    if not final_news:
-        final_news = [{"title": f"{coin_name} に関する最新ニュースはありません", "link": "#", "source": "System", "time": ""}]
+    # 3. 解析結果を統合
+    for i, res in enumerate(ai_results):
+        final_items[i]["ai_summary"] = res.get("summary", final_items[i]["title"][:15])
+        final_items[i]["sentiment"] = res.get("sentiment", "neutral")
+        # 元の重いsummaryは通信量削減のため削除
+        if "summary" in final_items[i]: del final_items[i]["summary"]
     
-    return final_news
+    return final_items
 
 # --- 共通ロジック：RSI計算 ---
 def calculate_rsi(prices, period=14):
@@ -103,10 +139,8 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str = "BTCUSDT", symb
         target_symbols = [s.strip().lower() for s in symbols.split(",")]
     else:
         target_symbols = [symbol.strip().lower()]
-
     streams = "/".join([f"{s}@ticker" for s in target_symbols])
     full_ws_url = BASE_WS_URL + streams
-    
     try:
         async with websockets.connect(full_ws_url) as binance_ws:
             while True:
@@ -114,89 +148,44 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str = "BTCUSDT", symb
                 data = json.loads(raw_data)
                 msg = data.get('data', {})
                 current_symbol = msg.get('s')
-                
                 if current_symbol and current_symbol.lower() in target_symbols:
-                    payload = {
-                        "s": current_symbol,
-                        "p": msg.get('c'),
-                        "dc": msg.get('P')
-                    }
-                    await websocket.send_json(payload)
-    except WebSocketDisconnect:
-        pass 
-    except Exception as e:
-        print(f"WS Error: {e}")
+                    await websocket.send_json({"s": current_symbol, "p": msg.get('c'), "dc": msg.get('P')})
+    except: pass
 
-# --- エンドポイント：Klines (チャート用) ---
+# --- エンドポイント：Klines ---
 @app.get("/api/klines")
 def get_klines(symbol: str = "BTCUSDT", interval: str = "1d", limit: int = 500):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
     try:
         response = requests.get(url, timeout=5)
-        data = response.json()
-        
-        # DataFrameに変換して計算
-        df = pd.DataFrame(data, columns=['time', 'open', 'high', 'low', 'close', 'vol', 'close_time', 'q_vol', 'trades', 'taker_base', 'taker_quote', 'ignore'])
+        df = pd.DataFrame(response.json(), columns=['time', 'open', 'high', 'low', 'close', 'vol', 'ct', 'qv', 'tr', 'tb', 'tq', 'ig'])
         df['close'] = df['close'].astype(float)
-        
-        # 移動平均の計算
         df['ma25'] = df['close'].rolling(window=25).mean()
         df['ma75'] = df['close'].rolling(window=75).mean()
+        return [{
+            "time": int(row['time'] / 1000), "open": float(row['open']), "high": float(row['high']), 
+            "low": float(row['low']), "close": float(row['close']),
+            "ma25": float(row['ma25']) if not pd.isna(row['ma25']) else None,
+            "ma75": float(row['ma75']) if not pd.isna(row['ma75']) else None,
+        } for _, row in df.iterrows()]
+    except: return []
 
-        formatted_data = []
-        for i in range(len(df)):
-            formatted_data.append({
-                "time": int(df.iloc[i]['time'] / 1000),
-                "open": float(df.iloc[i]['open']),
-                "high": float(df.iloc[i]['high']),
-                "low": float(df.iloc[i]['low']),
-                "close": float(df.iloc[i]['close']),
-                "ma25": float(df.iloc[i]['ma25']) if not pd.isna(df.iloc[i]['ma25']) else None,
-                "ma75": float(df.iloc[i]['ma75']) if not pd.isna(df.iloc[i]['ma75']) else None,
-            })
-        return formatted_data
-    except Exception as e:
-        return []
+# --- エンドポイント：ニュース ---
+@app.get("/api/news")
+async def get_news_api(symbol: str = "BTC"):
+    return await fetch_relevant_news(symbol)
 
-# --- エンドポイント：マーケット統計データ (RSI等) ---
+# --- エンドポイント：マーケットデータ統合 ---
 @app.get("/api/market_data")
-def get_market_data(symbol: str = "BTCUSDT"):
+async def get_market_data(symbol: str = "BTCUSDT"):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval=1h&limit=100"
     try:
         res = requests.get(url).json()
-        close_prices = [float(item[4]) for item in res]
-        current_rsi = calculate_rsi(close_prices)
-        # ここでも本物のニュースを返す
-        news = fetch_relevant_news(symbol)
-        return {"symbol": symbol, "rsi": round(current_rsi, 2), "news": news}
+        rsi = calculate_rsi([float(item[4]) for item in res])
+        news = await fetch_relevant_news(symbol)
+        return {"symbol": symbol, "rsi": round(rsi, 2), "news": news}
     except:
         return {"symbol": symbol, "rsi": 50.0, "news": []}
-
-# --- エンドポイント：本物のニュース
-@app.get("/api/news")
-def get_news_api(symbol: str = "BTC"):
-    """フロントエンドのNewsFeedから呼ばれるエンドポイント"""
-    return fetch_relevant_news(symbol)
-
-def analyze_news_with_ai(title: str, summary: str):
-    prompt = f"""
-    以下のニュースを分析し、JSON形式で回答してください。
-    1. summary: 15文字以内で極めて短く要約
-    2. sentiment: 'positive', 'negative', 'neutral' のいずれか
-
-    ニュースタイトル: {title}
-    ニュース概要: {summary[:200]}
-    """
-    
-    try:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-            response_format={"type": "json_object"},
-        )
-        return json.loads(chat_completion.choices[0].message.content)
-    except:
-        return {"summary": title[:15], "sentiment": "neutral"}
 
 if __name__ == "__main__":
     import uvicorn
