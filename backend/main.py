@@ -9,6 +9,10 @@ import pandas as pd
 import numpy as np
 import feedparser
 import os
+from groq import Groq
+
+# Groqクライアントの初期化（APIキーは環境変数から取得）
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 app = FastAPI()
 
@@ -49,11 +53,14 @@ def fetch_relevant_news(symbol: str):
             for entry in feed.entries:
                 title = entry.get('title', '')
                 summary = entry.get('summary', '') or entry.get('description', '')
-                
+                analysis = analyze_news_with_ai(title, summary)
+
                 # キーワードマッチング
                 if any(kw.lower() in title.lower() or kw.lower() in summary.lower() for kw in target_kws):
                     all_news.append({
                         "title": title,
+                        "ai_summary": analysis["summary"],     # AI要約
+                        "sentiment": analysis["sentiment"],     # センチメント
                         "link": entry.get('link', '#'),
                         "source": source["name"],
                         "time": entry.get('published', 'Just now')
@@ -170,6 +177,26 @@ def get_market_data(symbol: str = "BTCUSDT"):
 def get_news_api(symbol: str = "BTC"):
     """フロントエンドのNewsFeedから呼ばれるエンドポイント"""
     return fetch_relevant_news(symbol)
+
+def analyze_news_with_ai(title: str, summary: str):
+    prompt = f"""
+    以下のニュースを分析し、JSON形式で回答してください。
+    1. summary: 15文字以内で極めて短く要約
+    2. sentiment: 'positive', 'negative', 'neutral' のいずれか
+
+    ニュースタイトル: {title}
+    ニュース概要: {summary[:200]}
+    """
+    
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"},
+        )
+        return json.loads(chat_completion.choices[0].message.content)
+    except:
+        return {"summary": title[:15], "sentiment": "neutral"}
 
 if __name__ == "__main__":
     import uvicorn
