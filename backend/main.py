@@ -14,6 +14,8 @@ from groq import Groq
 # Groqクライアントの初期化
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
 app = FastAPI()
 
 # CORS設定
@@ -26,6 +28,96 @@ app.add_middleware(
 )
 
 BASE_WS_URL = "wss://stream.binance.com:9443/stream?streams="
+
+# --- 通知用関数 ---
+def send_discord_notification(message: str):
+    """
+    Discordにメッセージを送信する
+    """
+    if not DISCORD_WEBHOOK_URL or "..." in DISCORD_WEBHOOK_URL:
+        print("Discord Webhook URLが設定されていません。")
+        return
+
+    payload = {"content": message}
+    try:
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=5)
+        if response.status_code == 204:
+            print("Successfully sent to Discord.")
+        else:
+            print(f"Failed to send: {response.status_code}")
+    except Exception as e:
+        print(f"Discord Notification Error: {e}")
+
+# --- 1. 判定ロジック ---
+def check_signals(df: pd.DataFrame):
+    """
+    ゴールデンクロス(MA25 > MA75) かつ RSIが低水準からの回復を判定
+    """
+    if len(df) < 75:
+        return None
+
+    # 最新と1つ前のデータを取得
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    # 移動平均のクロス判定
+    is_golden_cross = (prev['ma25'] <= prev['ma75']) and (last['ma25'] > last['ma75'])
+    is_dead_cross = (prev['ma25'] >= prev['ma75']) and (last['ma25'] < last['ma75'])
+
+    # RSIの計算（直近14本など。dfにrsi列がない場合はここで計算）
+    # ※今回のコードでは、簡易的に直近の終値から計算
+    close_prices = df['close'].tolist()
+    rsi = calculate_rsi(close_prices)
+
+    if is_golden_cross:
+        # RSIが40以下から回復しているか（売られすぎ圏内でのクロスか）
+        if rsi < 45:
+            return f"🚀 【買いサイン】ゴールデンクロス発生！ RSI: {rsi:.2f}"
+        else:
+            return f"📈 【参考】ゴールデンクロス発生（ただしRSI高め） RSI: {rsi:.2f}"
+            
+    if is_dead_cross:
+        return f"⚠️ 【売りサイン】デッドクロス発生！ RSI: {rsi:.2f}"
+
+    return None
+
+# --- 監視ループの修正（通知を呼び出す） ---
+async def market_monitor_loop():
+    print("Market Monitor with Discord Started...")
+    last_notified_time = { "BTCUSDT": None, "ETHUSDT": None, "SOLUSDT": None }
+    
+    while True:
+        try:
+            for symbol in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
+                # klinesの取得 (既存の get_klines を呼び出す)
+                klines = get_klines(symbol=symbol, interval="1h", limit=100)
+                if not klines: continue
+                
+                df = pd.DataFrame(klines)
+                signal = check_signals(df) # 先ほど作った判定ロジック
+                
+                # 最新の足の時間を取得
+                current_bar_time = klines[-1]["time"]
+
+                # サインがあり、かつ同じ足でまだ通知していない場合のみ送信
+                if signal and last_notified_time[symbol] != current_bar_time:
+                    full_message = f"【{symbol} 監視アラート】\n{signal}"
+                    print(full_message) # コンソールにも表示
+                    
+                    # --- ここでDiscordへ送信 ---
+                    send_discord_notification(full_message)
+                    
+                    last_notified_time[symbol] = current_bar_time
+            
+            await asyncio.sleep(60) # 1分ごとにチェック
+        except Exception as e:
+            print(f"Monitor Error: {e}")
+            await asyncio.sleep(60)
+
+# --- 3. FastAPI起動時にループを開始させる設定 ---
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(market_monitor_loop())
 
 # --- AI解析ロジック (非同期化) ---
 async def analyze_news_with_ai(title: str, summary: str):
