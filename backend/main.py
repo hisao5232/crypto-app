@@ -119,6 +119,37 @@ async def market_monitor_loop():
 async def startup_event():
     asyncio.create_task(market_monitor_loop())
 
+# --- GMOコイン API連携 ---
+@app.get("/api/gmo_ticker")
+def get_gmo_ticker(symbol: str = "BTC"):
+    """
+    GMOコインの最新価格を取得する
+    symbol: BTC, ETH, SOL など
+    """
+    gmo_symbol = f"{symbol.upper()}_JPY"
+    url = f"https://api.coin.z.com/public/v1/ticker?symbol={gmo_symbol}"
+    
+    try:
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        
+        if data["status"] == 0:
+            ticker = data["data"][0]
+            # フロントエンドで扱いやすい形式に整形
+            return {
+                "symbol": symbol.upper(),
+                "last": float(ticker["last"]),
+                "bid": float(ticker["bid"]),
+                "ask": float(ticker["ask"]),
+                "high": float(ticker["high"]),
+                "low": float(ticker["low"]),
+                "timestamp": ticker["timestamp"]
+            }
+    except Exception as e:
+        print(f"GMO API Error: {e}")
+        
+    return {"error": "Failed to fetch GMO data"}
+    
 # --- AI解析ロジック (非同期化) ---
 async def analyze_news_with_ai(title: str, summary: str):
     """
