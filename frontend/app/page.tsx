@@ -11,18 +11,22 @@ import MarketStats from './components/MarketStats';
 import NewsFeed from './components/NewsFeed';
 
 export default function Home() {
+  // 選択されているメインの銘柄
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState<'1d' | '1m'>('1d');
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white">
+    <div className="flex flex-col min-h-screen bg-black text-white font-sans">
       <Header />
+      
       <main className="flex-grow max-w-[1800px] w-full mx-auto px-6 py-8">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           
           {/* 左カラム：市場監視とポートフォリオ */}
           <div className="xl:col-span-1 flex flex-col gap-6">
+            {/* リアルタイム価格カード群 */}
             <RealtimePrice />
+            
             <ChartCard title="Portfolio Allocation">
               <PortfolioAllocation />
             </ChartCard>
@@ -39,7 +43,7 @@ export default function Home() {
               />
             </ChartCard>
             
-            {/* 統計とニュースを横並びにするグリッド */}
+            {/* 統計とニュースのグリッド */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ChartCard title="Market Statistics" description={`${symbol} 24h Performance`}>
                 <MarketStats symbol={symbol} />
@@ -48,11 +52,12 @@ export default function Home() {
               <ChartCard title="Latest News" description={`${symbol} Related News`}>
                 <NewsFeed symbol={symbol} />
               </ChartCard>
-            </div> {/* ここで grid 終了 */}
-          </div> {/* ここで 右カラム 終了 */}
+            </div>
+          </div>
 
-        </div> {/* ここで 全体の grid 終了 */}
+        </div>
       </main>
+      
       <Footer />
     </div>
   );
